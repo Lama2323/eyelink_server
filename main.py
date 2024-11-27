@@ -1,20 +1,14 @@
 import cv2
-from src.face_detector import FaceDetector
-from src.face_tracker import FaceTracker
-from src.video_handler import VideoHandler
-from src.gui import ModernFaceDetectionApp
+import customtkinter as ctk
+from ui.app import ModernFaceDetectionApp
 
 def main():
-    # Enable OpenCL
-    cv2.ocl.setUseOpenCL(True)
+    ctk.set_appearance_mode("dark")
+    ctk.set_default_color_theme("blue")
     
-    # Initialize components
-    face_detector = FaceDetector()
-    face_tracker = FaceTracker()
-    video_handler = VideoHandler(face_detector, face_tracker)
-    
-    # Create and run GUI application
-    app = ModernFaceDetectionApp(video_handler)
+    cv2.namedWindow('Face Detection', cv2.WINDOW_NORMAL)
+
+    app = ModernFaceDetectionApp()
     app.run()
 
 if __name__ == "__main__":
