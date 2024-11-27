@@ -1,4 +1,5 @@
 def compute_iou(box1, box2):
+    """Compute Intersection over Union for two bounding boxes"""
     x1, y1, w1, h1 = box1
     x2, y2, w2, h2 = box2
     

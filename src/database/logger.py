@@ -1,23 +1,29 @@
-from config.settings import *
-from supabase import create_client
-
 class FaceDetectionLogger:
-    def __init__(self):
-        self.supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+    """Class to manage logging of face detection changes to Supabase"""
+    def __init__(self, supabase_client):
+        self.supabase = supabase_client
         self.last_stranger_count = 0
         self.last_known_faces = set()
+        self.min_update_interval = 3  # Minimum time between updates in seconds
         self.last_update_time = 0
     
     def should_update(self, current_time, stranger_count, known_faces):
-        if current_time - self.last_update_time < MIN_LOG_UPDATE_INTERVAL:
-            return False
-        
+        """Check if we should update the log based on changes and time interval"""
         if isinstance(known_faces, list):
             known_faces = set(known_faces)
         
-        return (stranger_count != self.last_stranger_count or known_faces != self.last_known_faces)
+        if current_time - self.last_update_time < self.min_update_interval:
+            return False
+        
+        has_changes = (
+            stranger_count != self.last_stranger_count or
+            known_faces != self.last_known_faces
+        )
+        
+        return has_changes
     
     def update_log(self, stranger_count, known_faces, current_time):
+        """Update access log in Supabase"""
         try:
             log_data = {
                 "stranger": stranger_count,

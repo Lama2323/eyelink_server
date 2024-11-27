@@ -1,15 +1,19 @@
+from src.app.gui import ModernFaceDetectionApp
 import cv2
-import customtkinter as ctk
-from ui.app import ModernFaceDetectionApp
 
 def main():
-    ctk.set_appearance_mode("dark")
-    ctk.set_default_color_theme("blue")
-    
-    cv2.namedWindow('Face Detection', cv2.WINDOW_NORMAL)
-
+    """Main function to run the application"""
     app = ModernFaceDetectionApp()
-    app.run()
+    
+    # Create OpenCV window
+    cv2.namedWindow('Face Detection', cv2.WINDOW_NORMAL)
+    
+    # Initialize program
+    app.set_initial_camera_source()
+    app.update_frame()
+    
+    # Start main loop
+    app.root.mainloop()
 
 if __name__ == "__main__":
     main()

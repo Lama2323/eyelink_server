@@ -1,10 +1,15 @@
 import cv2
 
 def draw_detections(frame, tracked_faces):
+    """Draw detection boxes and labels on frame"""
     for tracked_face in tracked_faces.values():
         x, y, w, h = tracked_face.bbox
         
-        color = (0, 255, 0) if tracked_face.recognized else (0, 0, 255)
+        # Set color based on recognition status
+        if tracked_face.recognized:
+            color = (0, 255, 0)  # Green for recognized faces
+        else:
+            color = (0, 0, 255)  # Red for unknown faces
         
         # Draw bounding box
         cv2.rectangle(frame, 
