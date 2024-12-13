@@ -40,7 +40,7 @@ class CameraStream:
             input_size=(160, 160),
             score_threshold=0.6,
             nms_threshold=0.4,
-            top_k=5000
+            top_k=50
         )
         self.recognizer_net = cv2.dnn.readNetFromONNX('model/mobilefacenet.onnx')
     
