@@ -225,16 +225,21 @@ class ModernFaceDetectionApp:
 
     def set_camera_source(self):
         dialog = ctk.CTkInputDialog(
-            text="Enter 0 for default camera or HTTP URL for stream:",
+            text="Enter 0 for default camera, 1 for secondary camera, or HTTP URL for stream:",
             title="Add Camera Source"
         )
         camera_source = dialog.get_input()
         if camera_source is None or camera_source.strip() == "":
             return None
 
-        source = 0 if camera_source == "0" else camera_source
-        if not str(source).startswith('http') and str(source) != "0":
+        if camera_source == "0":
+            source = 0
+        elif camera_source == "1":
+            source = 1
+        elif not str(camera_source).startswith('http'):
             source = 'http://' + camera_source + ':8080/video'
+        else:
+            source = camera_source
 
         return source
 
