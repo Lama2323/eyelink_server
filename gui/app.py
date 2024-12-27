@@ -1,3 +1,4 @@
+# app.py
 import cv2
 import threading
 import time
@@ -29,7 +30,7 @@ class CameraStream:
         self.yunet = cv2.FaceDetectorYN.create(
             model="model/yunet.onnx",
             config="",
-            input_size=(112, 112),
+            input_size=(160, 160),
             score_threshold=0.6,
             nms_threshold=0.4,
             top_k=50
@@ -95,7 +96,7 @@ class ModernFaceDetectionApp:
         self.logged_in = False
         self.password_visible = False
         self.previous_stranger_count = -1
-        self.previous_known_faces = set()
+        self.previous_known_faces = frozenset()
 
         self.login_frame = ctk.CTkFrame(self.root)
         self.login_frame.pack(fill="both", expand=True, padx=20, pady=20)
@@ -262,8 +263,9 @@ class ModernFaceDetectionApp:
         try:
             supabase.auth.sign_out()
             self.logged_in = False
-            for camera_stream in self.camera_streams:
-                camera_stream.stop()
+            if self.camera_streams:
+                for camera_stream in self.camera_streams:
+                    camera_stream.stop()
             self.camera_streams = []
             self._camera_sources = []
             self.current_camera_index = 0
@@ -407,13 +409,14 @@ class ModernFaceDetectionApp:
             self.stranger_label.configure(text=f"Stranger: {num_strangers}")
             self.previous_stranger_count = num_strangers
 
-        if known_names != self.previous_known_faces:
+        if frozenset(known_names) != self.previous_known_faces:
             self.familiar_label.configure(text=f"Familiar face: {', '.join(known_names)}")
-            self.previous_known_faces = known_names
+            self.previous_known_faces = frozenset(known_names)
 
     def on_closing(self):
-        for camera_stream in self.camera_streams:
-            camera_stream.stop()
+        if self.camera_streams:
+            for camera_stream in self.camera_streams:
+                camera_stream.stop()
         cv2.destroyAllWindows()
         self.root.destroy()
 
@@ -499,7 +502,7 @@ class ModernFaceDetectionApp:
             cv2.waitKey(1)
 
         if current_time - self.last_stats_time >= 1:
-            self.update_stats(num_unknown_total, frozenset(known_names_set))
+            self.update_stats(num_unknown_total, list(known_names_set))
 
             if self.logger.should_update(current_time, num_unknown_total, known_names_set):
                 self.logger.update_log(num_unknown_total, list(known_names_set), current_time)
