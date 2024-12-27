@@ -1,9 +1,11 @@
+# app.py
 import cv2
 import threading
 import time
 import customtkinter as ctk
+import re
 from utils.detection import load_face_recognition, detect_faces, draw_detections, face_recognition_data
-from utils.database import sync_face_folder
+from utils.database import sync_face_folder, supabase
 from utils.logging import FaceDetectionLogger
 from utils.tracking import TrackedFace, compute_iou
 
@@ -21,7 +23,6 @@ class CameraStream:
         self.result_lock = threading.Lock()
         self.tracked_faces = {}
         self.face_id_counter = 0
-        self.fps = 0.0
         self.frame_count = 0
         self.start_time = time.time()
         self.init_complete = threading.Event()
@@ -85,16 +86,51 @@ class ModernFaceDetectionApp:
     def __init__(self):
         self.root = ctk.CTk()
         self.root.title("Face Detection System")
-        self.root.geometry("400x700")
+        self.root.geometry("400x600")
 
         self._camera_sources = []
         self.logger = FaceDetectionLogger()
+        self.camera_streams = []
+        self.last_stats_time = time.time()
+        self.current_camera_index = 0
+        self.logged_in = False
+        self.password_visible = False
+
+        self.login_frame = ctk.CTkFrame(self.root)
+        self.login_frame.pack(fill="both", expand=True, padx=20, pady=20)
+
+        self.login_title_label = ctk.CTkLabel(self.login_frame, text="EyeLink", font=("Helvetica", 24))
+        self.login_title_label.pack(pady=(0, 20))
+
+        self.email_label = ctk.CTkLabel(self.login_frame, text="Email", font=("Helvetica", 14))
+        self.email_label.pack(pady=(0, 5), anchor="w")
+        self.email_entry = ctk.CTkEntry(self.login_frame, font=("Helvetica", 14), height=40)
+        self.email_entry.pack(pady=(0, 10), fill="x")
+
+        self.password_label = ctk.CTkLabel(self.login_frame, text="Password", font=("Helvetica", 14))
+        self.password_label.pack(pady=(0, 5), anchor="w")
+        self.password_entry_frame = ctk.CTkFrame(self.login_frame)
+        self.password_entry_frame.pack(pady=(0, 20), fill="x")
+        self.password_entry = ctk.CTkEntry(self.password_entry_frame, show="*", font=("Helvetica", 14), height=40)
+        self.password_entry.pack(side="left", fill="x", expand=True)
+        self.password_toggle_button = ctk.CTkButton(self.password_entry_frame,
+                                                   text="Hide",
+                                                   width=40,
+                                                   height=40,
+                                                   command=self.toggle_password_visibility)
+        self.password_toggle_button.pack(side="right")
+
+        self.login_button = ctk.CTkButton(self.login_frame, text="Login", command=self.login, font=("Helvetica", 14))
+        self.login_button.pack(pady=(0, 10))
+
+        self.login_status_label = ctk.CTkLabel(self.login_frame, text="", fg_color="transparent", font=("Helvetica", 14))
+        self.login_status_label.pack(pady=(0, 10))
+
         self.main_frame = ctk.CTkFrame(self.root)
-        self.main_frame.pack(fill="both", expand=True, padx=20, pady=20)
 
         self.title_label = ctk.CTkLabel(
             self.main_frame,
-            text="Face Detection Control Panel",
+            text="EyeLink Control Panel",
             font=("Helvetica", 24)
         )
         self.title_label.pack(pady=20)
@@ -115,13 +151,6 @@ class ModernFaceDetectionApp:
             font=("Helvetica", 16)
         )
         self.familiar_label.pack(pady=10)
-
-        self.fps_label = ctk.CTkLabel(
-            self.stats_frame,
-            text="FPS: ...",
-            font=("Helvetica", 16)
-        )
-        self.fps_label.pack(pady=10)
 
         self.control_frame = ctk.CTkFrame(self.main_frame)
         self.control_frame.pack(fill="x", padx=10, pady=20)
@@ -174,19 +203,90 @@ class ModernFaceDetectionApp:
 
         self.status_label = ctk.CTkLabel(
             self.status_frame,
-            text="System Status: Ready",
+            text="System Status: Awaiting login",
             font=("Helvetica", 14)
         )
         self.status_label.pack(pady=10)
 
-        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
-        self.camera_streams = []
-        self.last_stats_time = time.time()
-        self.current_camera_index = 0
+        self.logout_button = ctk.CTkButton(
+            self.main_frame,
+            text="Logout",
+            command=self.logout,
+            font=("Helvetica", 14)
+        )
+        self.logout_button.pack(pady=10, padx=20)
+        self.logout_button.pack_forget() # Hide initially
 
-        self.init_face_recognition()
+        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+
+    def is_valid_email(self, email):
+        pattern = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
+        return re.match(pattern, email)
+
+    def toggle_password_visibility(self):
+        self.password_visible = not self.password_visible
+        if self.password_visible:
+            self.password_entry.configure(show="")
+            self.password_toggle_button.configure(text="Show")
+        else:
+            self.password_entry.configure(show="*")
+            self.password_toggle_button.configure(text="Hide")
+
+    def login(self):
+        email = self.email_entry.get().strip()
+        password = self.password_entry.get()
+
+        if not self.is_valid_email(email):
+            self.login_status_label.configure(text="Invalid email format", text_color="red")
+            return
+
+        self.login_status_label.configure(text="Logging in...", text_color="black")
+        try:
+            user = supabase.auth.sign_in_with_password({"email": email, "password": password})
+            if user:
+                self.login_status_label.configure(text="Login successful!", text_color="green")
+                self.logged_in = True
+                self.login_frame.pack_forget()
+                self.main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+                self.logout_button.pack(pady=10, padx=20) # Show logout button
+                self.init_face_recognition()
+                self.set_initial_camera_source()
+                self.update_frame()
+            else:
+                self.login_status_label.configure(text="Login failed.", text_color="red")
+        except Exception as e:
+            self.login_status_label.configure(text=f"Login failed: {e}", text_color="red")
+
+    def logout(self):
+        try:
+            supabase.auth.sign_out()
+            self.logged_in = False
+            for camera_stream in self.camera_streams:
+                camera_stream.stop()
+            self.camera_streams = []
+            self._camera_sources = []
+            self.current_camera_index = 0
+            self.main_frame.pack_forget()
+            self.logout_button.pack_forget()
+            self.login_frame.pack(fill="both", expand=True, padx=20, pady=20)
+            self.status_label.configure(text="System Status: Awaiting login")
+            self.login_status_label.configure(text="", fg_color="transparent")
+            print("Logged out successfully")
+        except Exception as e:
+            print(f"Error during logout: {e}")
+
+    def disable_buttons(self):
+        self.refresh_button.configure(state="disabled")
+        self.add_camera_button.configure(state="disabled")
+        self.remove_camera_button.configure(state="disabled")
+
+    def enable_buttons(self):
+        self.refresh_button.configure(state="normal")
+        self.add_camera_button.configure(state="normal")
+        self.remove_camera_button.configure(state="normal")
 
     def init_face_recognition(self):
+        self.disable_buttons()
         self.status_label.configure(text="Syncing faces with Supabase...")
         self.root.update()
 
@@ -205,8 +305,11 @@ class ModernFaceDetectionApp:
         except Exception as e:
             print(f"Error during Supabase sync: {str(e)}")
             self.status_label.configure(text="Running in detection-only mode (Supabase sync failed)")
+        finally:
+            self.enable_buttons()
 
     def refresh_faces(self):
+        self.disable_buttons()
         stored_sources = self._camera_sources.copy()
 
         for camera_stream in self.camera_streams:
@@ -222,6 +325,7 @@ class ModernFaceDetectionApp:
             self.add_camera(source)
 
         self.status_label.configure(text="Face recognition system refreshed and cameras reloaded")
+        self.enable_buttons()
 
     def set_camera_source(self):
         dialog = ctk.CTkInputDialog(
@@ -297,12 +401,9 @@ class ModernFaceDetectionApp:
             self.current_camera_index = (self.current_camera_index + 1) % len(self.camera_streams)
             self.status_label.configure(text=f"Switched to camera {self.current_camera_index + 1}")
 
-    def update_stats(self, num_strangers, known_names, fps):
+    def update_stats(self, num_strangers, known_names):
         self.stranger_label.configure(text=f"Stranger: {num_strangers}")
         self.familiar_label.configure(text=f"Familiar face: {', '.join(known_names)}")
-        if len(self.camera_streams) > 0:
-            average_fps = sum(stream.fps for stream in self.camera_streams) / len(self.camera_streams)
-            self.fps_label.configure(text=f"FPS: {average_fps:.2f}")
 
     def on_closing(self):
         for camera_stream in self.camera_streams:
@@ -311,6 +412,10 @@ class ModernFaceDetectionApp:
         self.root.destroy()
 
     def update_frame(self):
+        if not self.logged_in:
+            self.root.after(10, self.update_frame)
+            return
+
         current_time = time.time()
         total_tracked_faces = {}
         num_unknown_total = 0
@@ -379,13 +484,6 @@ class ModernFaceDetectionApp:
                         else:
                             num_unknown_total += 1
 
-                    camera_stream.frame_count += 1
-                    elapsed_time = current_time - camera_stream.start_time
-                    if elapsed_time > 1.0:
-                        camera_stream.fps = camera_stream.frame_count / elapsed_time
-                        camera_stream.frame_count = 0
-                        camera_stream.start_time = current_time
-
                     if idx == self.current_camera_index:
                         frame_with_detections = draw_detections(frame.copy(), camera_stream.tracked_faces)
                         frame_to_display = frame_with_detections
@@ -395,7 +493,7 @@ class ModernFaceDetectionApp:
             cv2.waitKey(1)
 
         if current_time - self.last_stats_time >= 1:
-            self.update_stats(num_unknown_total, list(known_names_set), None)
+            self.update_stats(num_unknown_total, list(known_names_set))
 
             if self.logger.should_update(current_time, num_unknown_total, known_names_set):
                 self.logger.update_log(num_unknown_total, list(known_names_set), current_time)
