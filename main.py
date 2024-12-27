@@ -1,4 +1,3 @@
-# main.py
 import cv2
 from gui.app import ModernFaceDetectionApp
 
