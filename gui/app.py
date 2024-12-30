@@ -97,6 +97,7 @@ class ModernFaceDetectionApp:
         self.password_visible = False
         self.previous_stranger_count = -1
         self.previous_known_faces = frozenset()
+        self.has_initial_camera = False
 
         self.login_frame = ctk.CTkFrame(self.root)
         self.login_frame.pack(fill="both", expand=True, padx=20, pady=20)
@@ -263,18 +264,24 @@ class ModernFaceDetectionApp:
         try:
             supabase.auth.sign_out()
             self.logged_in = False
-            if self.camera_streams:
+
+            if hasattr(self, 'camera_streams') and self.camera_streams:
                 for camera_stream in self.camera_streams:
-                    camera_stream.stop()
+                    if camera_stream:
+                        camera_stream.stop()
+
             self.camera_streams = []
             self._camera_sources = []
             self.current_camera_index = 0
+            self.has_initial_camera = False
+
             self.main_frame.pack_forget()
             self.logout_button.pack_forget()
             self.login_frame.pack(fill="both", expand=True, padx=20, pady=20)
             self.status_label.configure(text="System Status: Awaiting login")
             self.login_status_label.configure(text="", fg_color="transparent")
             print("Logged out successfully")
+
         except Exception as e:
             print(f"Error during logout: {e}")
 
@@ -349,21 +356,24 @@ class ModernFaceDetectionApp:
             source = camera_source
 
         return source
-
+    
     def set_initial_camera_source(self):
         camera_source = self.set_camera_source()
         if camera_source is None:
-            print("No camera source provided. Exiting.")
-            exit()
+            self.status_label.configure(text="No camera source provided. System running without cameras.")
+            self.has_initial_camera = False
+            return
 
         self._camera_sources.append(camera_source)
         camera_id = len(self.camera_streams) + 1
         first_camera = CameraStream(camera_source, camera_id)
         if first_camera.start():
             self.camera_streams.append(first_camera)
+            self.has_initial_camera = True
         else:
             print(f"Failed to start stream {camera_source}")
-            exit()
+            self.status_label.configure(text="Failed to start camera. System running without cameras.")
+            self.has_initial_camera = False
 
     def add_camera(self, preset_source=None):
         if preset_source is not None:
@@ -422,6 +432,10 @@ class ModernFaceDetectionApp:
 
     def update_frame(self):
         if not self.logged_in:
+            self.root.after(10, self.update_frame)
+            return
+
+        if not self.has_initial_camera and len(self.camera_streams) == 0:
             self.root.after(10, self.update_frame)
             return
 
