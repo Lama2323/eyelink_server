@@ -444,6 +444,10 @@ class ModernFaceDetectionApp:
         num_unknown_total = 0
         known_names_set = set()
         frame_to_display = None
+        
+        MIN_CONFIDENCE_FRAMES = 2 
+
+        MAX_MISSING_FRAMES = 3    
 
         for idx, camera_stream in enumerate(self.camera_streams):
             with camera_stream.result_lock:
@@ -452,6 +456,8 @@ class ModernFaceDetectionApp:
                     camera_stream.latest_result[0] = None
 
                     new_tracked_faces = {}
+                    detected_face_ids = set()
+
                     for detection in detections:
                         bbox = detection['bbox']
                         name = detection['name']
@@ -459,53 +465,50 @@ class ModernFaceDetectionApp:
 
                         matched_face_id = None
                         max_iou = 0
+                        
                         for face_id, tracked_face in camera_stream.tracked_faces.items():
                             iou = compute_iou(bbox, tracked_face.bbox)
-                            if iou > 0.5 and iou > max_iou:
+                            if iou > 0.35 and iou > max_iou:
                                 max_iou = iou
                                 matched_face_id = face_id
 
                         if matched_face_id is not None:
                             tracked_face = camera_stream.tracked_faces[matched_face_id]
                             tracked_face.bbox = bbox
-                            time_since_last_update = current_time - tracked_face.last_update_time
+                            tracked_face.confidence_count += 1
+                            tracked_face.missing_count = 0
 
-                            if tracked_face.recognized == recognized and tracked_face.name == name:
-                                tracked_face.state_duration += time_since_last_update
-                            else:
-                                if tracked_face.recognized and not recognized:
-                                    tracked_face.unknown_duration += time_since_last_update
-                                    if tracked_face.unknown_duration >= 3:
-                                        tracked_face.name = name
-                                        tracked_face.recognized = False
-                                        tracked_face.state_duration = 0
-                                        tracked_face.current_state_start_time = current_time
-                                        tracked_face.unknown_duration = 0
-                                else:
+                            if tracked_face.confidence_count >= MIN_CONFIDENCE_FRAMES:
+                                if tracked_face.recognized != recognized or tracked_face.name != name:
                                     tracked_face.name = name
                                     tracked_face.recognized = recognized
                                     tracked_face.state_duration = 0
                                     tracked_face.current_state_start_time = current_time
-                                    tracked_face.unknown_duration = 0
 
                             tracked_face.last_update_time = current_time
                             new_tracked_faces[matched_face_id] = tracked_face
+                            detected_face_ids.add(matched_face_id)
                         else:
                             camera_stream.face_id_counter += 1
-                            new_tracked_faces[camera_stream.face_id_counter] = TrackedFace(
-                                camera_stream.face_id_counter, bbox, name, recognized, current_time
-                            )
+                            new_face = TrackedFace(camera_stream.face_id_counter, bbox, name, recognized, current_time)
+                            new_tracked_faces[camera_stream.face_id_counter] = new_face
+                            detected_face_ids.add(camera_stream.face_id_counter)
 
-                    camera_stream.tracked_faces = {
-                        face_id: face for face_id, face in new_tracked_faces.items()
-                        if current_time - face.last_update_time <= 5
-                    }
+                    for face_id, tracked_face in camera_stream.tracked_faces.items():
+                        if face_id not in detected_face_ids:
+                            tracked_face.missing_count += 1
+                            tracked_face.confidence_count = max(0, tracked_face.confidence_count - 1)
+                            if tracked_face.missing_count < MAX_MISSING_FRAMES:
+                                new_tracked_faces[face_id] = tracked_face
+
+                    camera_stream.tracked_faces = new_tracked_faces
 
                     for tracked_face in camera_stream.tracked_faces.values():
-                        if tracked_face.recognized:
-                            known_names_set.add(tracked_face.name)
-                        else:
-                            num_unknown_total += 1
+                        if tracked_face.confidence_count >= MIN_CONFIDENCE_FRAMES:
+                            if tracked_face.recognized:
+                                known_names_set.add(tracked_face.name)
+                            else:
+                                num_unknown_total += 1
 
                     if idx == self.current_camera_index:
                         frame_with_detections = draw_detections(frame.copy(), camera_stream.tracked_faces)
@@ -515,12 +518,12 @@ class ModernFaceDetectionApp:
             cv2.imshow('Face Detection', frame_to_display)
             cv2.waitKey(1)
 
-        if current_time - self.last_stats_time >= 1:
+        if current_time - self.last_stats_time >= 0.8:
             self.update_stats(num_unknown_total, list(known_names_set))
-
+            
             if self.logger.should_update(current_time, num_unknown_total, known_names_set):
                 self.logger.update_log(num_unknown_total, list(known_names_set), current_time)
-
+                
             self.last_stats_time = current_time
 
         self.root.after(10, self.update_frame)

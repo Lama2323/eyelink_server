@@ -10,6 +10,8 @@ class TrackedFace:
         self.last_update_time = timestamp
         self.current_state_start_time = timestamp
         self.unknown_duration = 0
+        self.confidence_count = 1 
+        self.missing_count = 0  
 
 def compute_iou(box1, box2):
     x1, y1, w1, h1 = box1

@@ -21,7 +21,7 @@ def load_face_recognition():
         model="model/yunet.onnx",
         config="",
         input_size=(160, 160),
-        score_threshold=0.6,
+        score_threshold=0.65,
         nms_threshold=0.4,
         top_k=50
     )
@@ -81,12 +81,23 @@ def detect_faces(latest_frame, frame_lock, latest_result, result_lock, stop_even
             if latest_frame[0] is None:
                 continue
             frame = latest_frame[0].copy()
-
+        
+        # Chuyển sang HSV để phân tích điều kiện ánh sáng
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-        h, s, v = cv2.split(hsv)
-        equalized_v = cv2.equalizeHist(v)
-        equalized_hsv = cv2.merge([h, s, equalized_v])
-        frame = cv2.cvtColor(equalized_hsv, cv2.COLOR_HSV2BGR)
+        _, _, v = cv2.split(hsv)
+        
+        # Tính histogram của kênh Value để đánh giá điều kiện ánh sáng
+        hist = cv2.calcHist([v], [0], None, [256], [0, 256])
+        mean_brightness = np.mean(v)
+        std_brightness = np.std(v)
+        
+        # Chỉ áp dụng equalization nếu:
+        # - Độ sáng trung bình thấp (< 85) hoặc
+        # - Độ tương phản kém (std < 30)
+        if mean_brightness < 85 or std_brightness < 30:
+            equalized_v = cv2.equalizeHist(v)
+            hsv[:,:,2] = equalized_v
+            frame = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
 
         small_frame = cv2.resize(frame, (160, 160))
         height, width, _ = small_frame.shape
