@@ -382,6 +382,11 @@ class ModernFaceDetectionApp:
             new_source = self.set_camera_source()
 
         if new_source is not None:
+            # Kiểm tra xem source đã tồn tại chưa
+            if new_source in self._camera_sources:
+                self.status_label.configure(text=f"Camera already exists.")
+                return
+
             camera_id = len(self.camera_streams) + 1
             new_camera = CameraStream(new_source, camera_id)
             if new_camera.start():
