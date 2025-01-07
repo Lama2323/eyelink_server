@@ -86,7 +86,7 @@ class ModernFaceDetectionApp:
     def __init__(self):
         self.root = ctk.CTk()
         self.root.title("Face Detection System")
-        self.root.geometry("400x600")
+        self.root.minsize(400, 600)
 
         self._camera_sources = []
         self.logger = FaceDetectionLogger()
@@ -339,7 +339,7 @@ class ModernFaceDetectionApp:
 
     def set_camera_source(self):
         dialog = ctk.CTkInputDialog(
-            text="Enter 0 for default camera, 1 for secondary camera, or HTTP URL for stream:",
+            text="Enter 0 for default camera, 1 for secondary camera, or IP for stream:",
             title="Add Camera Source"
         )
         camera_source = dialog.get_input()
